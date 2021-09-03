@@ -73,16 +73,9 @@ pub(crate) fn host_callback(
             }
         },
         "kubernetes" => {
-            let cluster_context = ClusterContext::get();
-            match namespace {
-                "ingresses" => Ok(cluster_context.ingresses().into()),
-                "namespaces" => Ok(cluster_context.namespaces().into()),
-                "services" => Ok(cluster_context.services().into()),
-                _ => {
-                    error!("unknown namespace: {}", namespace);
-                    Err(format!("unknown namespace: {}", namespace).into())
-                }
-            }
+            let policy_mapping = POLICY_MAPPING.read().unwrap();
+            let policy = policy_mapping.get(&policy_id).unwrap();
+            Err(format!("unknown binding: {}", binding).into())
         }
         _ => {
             error!("unknown binding: {}", binding);
@@ -94,7 +87,7 @@ pub(crate) fn host_callback(
 pub struct PolicyEvaluator {
     wapc_host: WapcHost,
     policy: Policy,
-    settings: serde_json::Map<String, serde_json::Value>,
+    settings: HashMap<String, serde_json::Value>,
 }
 
 impl fmt::Debug for PolicyEvaluator {
@@ -110,7 +103,7 @@ impl PolicyEvaluator {
     pub fn from_file(
         id: String,
         policy_file: &Path,
-        settings: Option<serde_json::Map<String, serde_json::Value>>,
+        settings: HashMap<String, serde_json::Value>,
     ) -> Result<PolicyEvaluator> {
         PolicyEvaluator::from_contents(id, fs::read(policy_file)?, settings)
     }
@@ -118,27 +111,27 @@ impl PolicyEvaluator {
     pub fn from_contents(
         id: String,
         policy_contents: Vec<u8>,
-        settings: Option<serde_json::Map<String, serde_json::Value>>,
+        settings: HashMap<String, serde_json::Value>,
     ) -> Result<PolicyEvaluator> {
         let engine = WasmtimeEngineProvider::new(&policy_contents, None);
         let wapc_host = WapcHost::new(Box::new(engine), host_callback)?;
         let policy = PolicyEvaluator::from_contents_internal(
             id,
             || Ok(wapc_host.id()),
-            Policy::from_contents,
+            Policy::new,
         )?;
 
         Ok(PolicyEvaluator {
             wapc_host,
             policy,
-            settings: settings.unwrap_or_default(),
+            settings,
         })
     }
 
     fn from_contents_internal<E, P>(
         id: String,
         engine_initializer: E,
-        policy_from_contents: P,
+        policy_initializer: P,
     ) -> Result<Policy>
     where
         E: Fn() -> Result<u64>,
@@ -146,7 +139,7 @@ impl PolicyEvaluator {
     {
         let wapc_policy_id = engine_initializer()?;
 
-        let policy = policy_from_contents(id, wapc_policy_id)?;
+        let policy = policy_initializer(id, wapc_policy_id)?;
         POLICY_MAPPING
             .write()
             .unwrap()

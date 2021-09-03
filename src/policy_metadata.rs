@@ -118,6 +118,16 @@ fn validate_resources(data: &[String]) -> Result<(), ValidationError> {
 
 #[derive(Deserialize, Serialize, Debug, Clone, Validate)]
 #[serde(rename_all = "camelCase")]
+pub struct ClusterContextResource {
+    group: String,
+    version: String,
+    kind: Vec<String>,
+}
+
+type ClusterContextResources = Vec<ClusterContextResource>;
+
+#[derive(Deserialize, Serialize, Debug, Clone, Validate)]
+#[serde(rename_all = "camelCase")]
 pub struct Metadata {
     #[validate(required, custom = "validate_protocol_version")]
     pub protocol_version: Option<ProtocolVersion>,
@@ -128,6 +138,8 @@ pub struct Metadata {
     pub mutating: bool,
     #[serde(default)]
     pub context_aware: bool,
+    #[serde(default)]
+    pub cluster_context_resources: ClusterContextResources,
 }
 
 impl Default for Metadata {
@@ -138,6 +150,7 @@ impl Default for Metadata {
             annotations: Some(HashMap::new()),
             mutating: false,
             context_aware: false,
+            cluster_context_resources: vec![],
         }
     }
 }
